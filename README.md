@@ -6,30 +6,32 @@ Works with mainnet and testnet.
 ## Getting Started
 
 ### 1) Depend on it
-After you download the repository, add a local dependency into the pubspec.yaml of your testing or development projet:
 
 ```
 dependencies:
-  bitbox_plugin:
-    path: <path to the directory>/
+  bitbox:
+    git:
+      url: https://github.com/RomitRadical/bitbox-flutter
+      ref: master
 ```
-	
+
 ### 2) Import it
 
 ```
-// There's a good chance your own project will use similar names as some of the 
-// classes in this library. A simple way to create some order is to import the 
+// There's a good chance your own project will use similar names as some of the
+// classes in this library. A simple way to create some order is to import the
 // library with Bitbox prefix:
-import 'package:bitbox/bitbox.dart' as Bitbox;
+import 'package:bitbox/bitbox.dart' as bitbox;
 ```
 
 ### 2) Use it
+
 ```
 // set this to true to use testnet
 final testnet = true;
 
-// After running the code for the first time, depositing an amount to the address 
-// displayed in the console, and waiting for confirmation, paste the generated 
+// After running the code for the first time, depositing an amount to the address
+// displayed in the console, and waiting for confirmation, paste the generated
 // mnemonic here, so the code continues below with address withdrawal
 String mnemonic = "";
 
@@ -86,7 +88,7 @@ if (addressDetails["balance"] > 0) {
   // placeholder for total input balance
   int totalBalance = 0;
 
-  // iterate through the list of address utxos and use them as inputs for the 
+  // iterate through the list of address utxos and use them as inputs for the
   // withdrawal transaction
   utxos.forEach((Bitbox.Utxo utxo) {
     // add the utxo as an input for the transaction
@@ -118,7 +120,7 @@ if (addressDetails["balance"] > 0) {
 
     // sign all inputs
     signatures.forEach((signature) {
-      builder.sign(signature["vin"], signature["key_pair"], 
+      builder.sign(signature["vin"], signature["key_pair"],
 	    signature["original_amount"]);
     });
 
@@ -140,8 +142,9 @@ For further documentation, refer to apidoc of this repository
 
 ## Testing
 
-There are some unit tests in test/bitbox_test.dart. They use data generated from the original [Bitbox for JS](https://developer.bitcoin.com/bitbox/) and compare them with the output of this library. 
+There are some unit tests in test/bitbox_test.dart. They use data generated from the original [Bitbox for JS](https://developer.bitcoin.com/bitbox/) and compare them with the output of this library.
 The following is tested for both testnet and mainnet:
+
 - Generating the master node from mnemonic and comparing both its XPub and XPriv
 - Generating an account node and comparing XPub and XPriv
 - Generating 10 test childs and comparing their private keys and addresses
@@ -156,12 +159,11 @@ To run the test:
 1. Copy create_test_data.js to a separate directory and download the original Bitbox JS into the directory
 2. Generate the testing data by runing create_test_data.js with your local nodeJS engine
 3. Update bitbox_test.dart with the path to the generated test_data.json file
-4. Run bitbox_test.dart 
-Optionally between step 1) and 2), send some balance to either testnet or mainnet addresses (or both), wait for confirmations and run create_test_data.js again to update the data and generate testing transactions
-
+4. Run bitbox_test.dart
+   Optionally between step 1) and 2), send some balance to either testnet or mainnet addresses (or both), wait for confirmations and run create_test_data.js again to update the data and generate testing transactions
 
 ## Acknowledgments
 
-This is a port of the original JS-based Bitbox library by Gabriel Cordana and Bitcoin.com, so first of all huge thanks to Gabriel and the whole Bitcoin.com team for doing so much for the BCH ecosystem.
+This is a port of the original JS-based Bitbox library by Gabriel Cardona and Bitcoin.com, so first of all huge thanks to Gabriel and the whole Bitcoin.com team for doing so much for the BCH ecosystem.
 
 Also I either re-used a lot of code originally wrote for Bitcoin or called some libraries (bip39 and bip32) by [anicdh](https://github.com/anicdh), so Thanks big time to him. Without that it would take me many more weeks!

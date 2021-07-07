@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'crypto/ecurve.dart';
 import 'address.dart';
 import 'package:hex/hex.dart';
-import 'package:bs58check/bs58check.dart' as bs58check;
+import 'package:bs58check_dart/bs58check.dart' as bs58check;
 
 import 'crypto/crypto.dart';
 import 'ecpair.dart';
@@ -35,7 +35,7 @@ class HDNode {
   int index = 0;
 
   int parentFingerprint = 0x00000000;
-  Uint8List get identifier => hash160(publicKeyList);
+  Uint8List get identifier => Crypto.hash160(publicKeyList);
   Uint8List get fingerprint => identifier.sublist(0, 4);
 
   Uint8List get publicKeyList => _keyPair.publicKey;
@@ -57,7 +57,7 @@ class HDNode {
 
     final key = utf8.encode('Bitcoin seed');
 
-    final I = hmacSHA512(key, seed);
+    final I = Crypto.hmacSHA512(key, seed);
 
     final keyPair = ECPair(I.sublist(0, 32), null, network: network);
 
@@ -68,7 +68,8 @@ class HDNode {
 
   /// Creates [HDNode] from extended public key
   factory HDNode.fromXPub(String xPub) {
-    final network = xPub[0] == "x" ? Network.bitcoinCash() : Network.bitcoinCashTest();
+    final network =
+        xPub[0] == "x" ? Network.bitcoinCash() : Network.bitcoinCashTest();
     HDNode hdNode = HDNode._fromBase58(xPub, network);
 
     return hdNode;
@@ -76,12 +77,12 @@ class HDNode {
 
   /// Creates [HDNode] from extended private key
   factory HDNode.fromXPriv(String xPriv) {
-    final network = xPriv[0] == "x" ? Network.bitcoinCash() : Network.bitcoinCashTest();
+    final network =
+        xPriv[0] == "x" ? Network.bitcoinCash() : Network.bitcoinCashTest();
     HDNode hdNode = HDNode._fromBase58(xPriv, network);
 
     return hdNode;
   }
-
 
   factory HDNode._fromBase58(String string, Network network) {
     Uint8List buffer = bs58check.decode(string);
@@ -99,7 +100,8 @@ class HDNode {
     // 4 bytes: the fingerprint of the parent's key (0x00000000 if master key)
     var parentFingerprint = bytes.getUint32(5);
     if (depth == 0) {
-      if (parentFingerprint != 0x00000000) throw new ArgumentError("Invalid parent fingerprint");
+      if (parentFingerprint != 0x00000000)
+        throw new ArgumentError("Invalid parent fingerprint");
     }
 
     // 4 bytes: child number. This is the number i in xi = xpar/i, with xi the key being serialized.
@@ -113,7 +115,8 @@ class HDNode {
     ECPair keyPair;
     // 33 bytes: private key data (0x00 + k)
     if (version == network.bip32Private) {
-      if (bytes.getUint8(45) != 0x00) throw new ArgumentError("Invalid private key");
+      if (bytes.getUint8(45) != 0x00)
+        throw new ArgumentError("Invalid private key");
       Uint8List d = buffer.sublist(46, 78);
       keyPair = ECPair(d, null, network: network);
 //      hdNode = HDNode.fromPrivateKey(d, chainCode, network);
@@ -171,7 +174,7 @@ class HDNode {
       data.buffer.asByteData().setUint32(33, index);
     }
 
-    final I = hmacSHA512(_chainCode, data);
+    final I = Crypto.hmacSHA512(_chainCode, data);
     final IL = I.sublist(0, 32);
     final IR = I.sublist(32);
 //    if (!ecc.isPrivate(IL)) {
@@ -186,7 +189,7 @@ class HDNode {
     } else {
       final ki = ECurve.pointAddScalar(publicKeyList, IL, true);
       if (ki == null) return derive(index + 1);
-      
+
       derivedKeyPair = ECPair(null, ki, network: this._keyPair.network);
     }
     final hd = HDNode(derivedKeyPair, IR);
@@ -209,12 +212,17 @@ class HDNode {
   /// Returns HDNode's address in cashAddr format
   String toCashAddress() => Address.toCashAddress(toLegacyAddress());
 
+  /// Returns HDNode's address in slpAddr format
+  String toSLPAddress() => Address.toSLPAddress(toLegacyAddress());
+
   HDNode _deriveHardened(int index) {
     return derive(index + HIGHEST_BIT);
   }
 
   String _toBase58() {
-    final version = (!_isNeutered()) ? this._keyPair.network.bip32Private : this._keyPair.network.bip32Public;
+    final version = (!_isNeutered())
+        ? this._keyPair.network.bip32Private
+        : this._keyPair.network.bip32Public;
     Uint8List buffer = new Uint8List(78);
     ByteData bytes = buffer.buffer.asByteData();
     bytes.setUint32(0, version);
@@ -232,7 +240,9 @@ class HDNode {
   }
 
   HDNode _neutered() {
-    final neutered = HDNode(ECPair(null, this.publicKeyList, network: this._keyPair.network), _chainCode);
+    final neutered = HDNode(
+        ECPair(null, this.publicKeyList, network: this._keyPair.network),
+        _chainCode);
     neutered.depth = this.depth;
     neutered.index = this.index;
     neutered.parentFingerprint = this.parentFingerprint;

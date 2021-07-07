@@ -2,35 +2,60 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'utils/rest_api.dart';
 
-import 'package:bs58check/bs58check.dart' as bs58check;
+import 'package:bs58check_dart/bs58check.dart' as bs58check;
 import 'utils/network.dart';
-import 'utils/opcodes.dart';
-import 'utils/script.dart' as bscript;
 import 'package:fixnum/fixnum.dart';
-
-import 'hdnode.dart';
 
 /// Works with both legacy and cashAddr formats of the address
 ///
 /// There is no reason to instanciate this class. All constants, functions, and methods are static.
 /// It is assumed that all necessary data to work with addresses are kept in the instance of [ECPair] or [Transaction]
 class Address {
-  static const formatCashAddr = 0;
-  static const formatLegacy = 1;
+  static const formatCashAddr = 'cashaddr';
+  static const formatLegacy = 'legacy';
+  static const formatSlp = 'slpaddr';
 
   static const _CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
   static const _CHARSET_INVERSE_INDEX = {
-    'q': 0, 'p': 1, 'z': 2, 'r': 3, 'y': 4, '9': 5, 'x': 6, '8': 7,
-    'g': 8, 'f': 9, '2': 10, 't': 11, 'v': 12, 'd': 13, 'w': 14, '0': 15,
-    's': 16, '3': 17, 'j': 18, 'n': 19, '5': 20, '4': 21, 'k': 22, 'h': 23,
-    'c': 24, 'e': 25, '6': 26, 'm': 27, 'u': 28, 'a': 29, '7': 30, 'l': 31,
+    'q': 0,
+    'p': 1,
+    'z': 2,
+    'r': 3,
+    'y': 4,
+    '9': 5,
+    'x': 6,
+    '8': 7,
+    'g': 8,
+    'f': 9,
+    '2': 10,
+    't': 11,
+    'v': 12,
+    'd': 13,
+    'w': 14,
+    '0': 15,
+    's': 16,
+    '3': 17,
+    'j': 18,
+    'n': 19,
+    '5': 20,
+    '4': 21,
+    'k': 22,
+    'h': 23,
+    'c': 24,
+    'e': 25,
+    '6': 26,
+    'm': 27,
+    'u': 28,
+    'a': 29,
+    '7': 30,
+    'l': 31,
   };
 
   /// Returns information about the given Bitcoin Cash address.
   ///
   /// See https://developer.bitcoin.com/bitbox/docs/util for details about returned format
   static Future<Map<String, dynamic>> validateAddress(String address) async =>
-    await RestApi.sendGetRequest("util/validateAddress", address);
+      await RestApi.sendGetRequest("util/validateAddress", address);
 
   /// Returns details of the provided address or addresses
   ///
@@ -44,7 +69,7 @@ class Address {
   /// See https://developer.bitcoin.com/bitbox/docs/address#details for details about returned format. However
   /// note, that processing from array to map is done on the library side
   static Future<dynamic> details(addresses, [returnAsMap = false]) async =>
-    await _sendRequest("details", addresses, returnAsMap);
+      await _sendRequest("details", addresses, returnAsMap);
 
   /// Returns list of unconfirmed transactions
   ///
@@ -57,7 +82,8 @@ class Address {
   ///
   /// See https://developer.bitcoin.com/bitbox/docs/address#unconfirmed for details about the returned format. However
   /// note, that processing from array to map is done on the library side
-  static Future<dynamic> getUnconfirmed(addresses, [returnAsMap = false]) async {
+  static Future<dynamic> getUnconfirmed(addresses,
+      [returnAsMap = false]) async {
     final result = await _sendRequest("unconfirmed", addresses);
 
     if (result is Map) {
@@ -68,9 +94,11 @@ class Address {
 
       result.forEach((addressUtxoMap) {
         if (returnAsMap) {
-          returnMap[addressUtxoMap["cashAddr"]] = Utxo.convertMapListToUtxos(addressUtxoMap["utxos"]);
+          returnMap[addressUtxoMap["cashAddr"]] =
+              Utxo.convertMapListToUtxos(addressUtxoMap["utxos"]);
         } else {
-          addressUtxoMap["utxos"] = Utxo.convertMapListToUtxos(addressUtxoMap["utxos"]);
+          addressUtxoMap["utxos"] =
+              Utxo.convertMapListToUtxos(addressUtxoMap["utxos"]);
           returnList.add(addressUtxoMap);
         }
       });
@@ -99,9 +127,11 @@ class Address {
 
       result.forEach((addressUtxoMap) {
         if (returnAsMap) {
-          returnMap[addressUtxoMap["cashAddress"]] = Utxo.convertMapListToUtxos(addressUtxoMap["utxos"]);
+          returnMap[addressUtxoMap["cashAddress"]] =
+              Utxo.convertMapListToUtxos(addressUtxoMap["utxos"]);
         } else {
-          addressUtxoMap["utxos"] = Utxo.convertMapListToUtxos(addressUtxoMap["utxos"]);
+          addressUtxoMap["utxos"] =
+              Utxo.convertMapListToUtxos(addressUtxoMap["utxos"]);
           returnList.add(addressUtxoMap);
         }
       });
@@ -112,38 +142,96 @@ class Address {
     }
   }
 
-  /// Converts legacy address to cash address
-  static String toCashAddress(String legacyAddress, [bool includePrefix = true]) {
-    final decoded = Address._decodeLegacyAddress(legacyAddress);
-    String prefix = "";
-    if (includePrefix) {
-      switch (decoded["version"]) {
-        case Network.bchPublic :
-          prefix = "bitcoincash";
+  /// Converts cashAddr format to legacy address
+  static String toLegacyAddress(String address) {
+    final decoded = _decode(address);
+    final testnet =
+        decoded['prefix'] == "bchtest" || decoded['prefix'] == "slptest";
+    var version;
+    if (testnet) {
+      switch (decoded['type']) {
+        case "P2PKH":
+          version = Network.bchTestnetPublic;
           break;
-        case Network.bchTestnetPublic :
-          prefix = "bchtest";
+        case "P2SH":
+          version = Network.bchTestnetscriptHash;
           break;
-        default:
-          throw FormatException("Unsupported address format: $legacyAddress");
+      }
+    } else {
+      switch (decoded['type']) {
+        case "P2PKH":
+          version = Network.bchPublic;
+          break;
+        case "P2SH":
+          version = Network.bchPublicscriptHash;
+          break;
       }
     }
-
-    final cashAddress = Address._encode(prefix, "P2PKH", decoded["hash"]);
-    return cashAddress;
-  }
-
-  /// Converts cashAddr format to legacy address
-  static String toLegacyAddress(String cashAddress) {
-    final decoded = _decodeCashAddress(cashAddress);
-    final testnet = decoded['prefix'] == "bchtest";
-
-    final version = !testnet ? Network.bchPublic : Network.bchTestnetPublic;
     return toBase58Check(decoded["hash"], version);
   }
 
-  /// Detects type of the address and returns [formatCashAddr] or [formatLegacy]
-  static int detectFormat(String address) {
+  /// Converts legacy address to cash address
+  static String toCashAddress(String address, [bool includePrefix = true]) {
+    final decoded = _decode(address);
+    switch (decoded["prefix"]) {
+      case 'bitcoincash':
+      case 'simpleledger':
+        decoded['prefix'] = "bitcoincash";
+        break;
+      case 'bchtest':
+      case 'slptest':
+        decoded['prefix'] = "bchtest";
+        break;
+      default:
+        throw FormatException("Unsupported address format: $address");
+    }
+    final cashAddress =
+        _encode(decoded['prefix'], decoded['type'], decoded["hash"]);
+    if (!includePrefix) {
+      return cashAddress.split(":")[1];
+    } else {
+      return cashAddress;
+    }
+  }
+
+  /// Converts legacy or cash address to SLP address
+  static String toSLPAddress(String address, [bool includePrefix = true]) {
+    final decoded = Address._decode(address);
+    switch (decoded["prefix"]) {
+      case 'bitcoincash':
+      case 'simpleledger':
+        decoded['prefix'] = "simpleledger";
+        break;
+      case 'bchtest':
+      case 'slptest':
+        decoded['prefix'] = "slptest";
+        break;
+      default:
+        throw FormatException("Unsupported address format: $address");
+    }
+    final slpAddress =
+        Address._encode(decoded['prefix'], decoded['type'], decoded["hash"]);
+    if (!includePrefix) {
+      return slpAddress.split(":")[1];
+    } else {
+      return slpAddress;
+    }
+  }
+
+  static bool isLegacyAddress(String address) {
+    return detectAddressFormat(address) == formatLegacy;
+  }
+
+  static bool isCashAddress(String address) {
+    return detectAddressFormat(address) == formatCashAddr;
+  }
+
+  static bool isSlpAddress(String address) {
+    return detectAddressFormat(address) == formatSlp;
+  }
+
+  /// Detects type of the address and returns [legacy], [cashaddr] or [slpaddr]
+  static String detectAddressFormat(String address) {
     // decode the address to determine the format
     final decoded = _decode(address);
     // return the format
@@ -158,6 +246,7 @@ class Address {
     return bs58check.encode(payload);
   }
 
+  /*
   static Uint8List _toOutputScript(address, network) {
     return bscript.compile([
       Opcodes.OP_DUP,
@@ -166,16 +255,17 @@ class Address {
       Opcodes.OP_EQUALVERIFY,
       Opcodes.OP_CHECKSIG
     ]);
-  }
+  }*/
 
   /// Encodes a hash from a given type into a Bitcoin Cash address with the given prefix.
   /// [prefix] - Network prefix. E.g.: 'bitcoincash'.
-  /// [type] is currently unused - the library works only with _P2PKH_
+  /// [type] Type of address to generate. Either 'P2PKH' or 'P2SH'.
   /// [hash] is the address hash, which can be decode either using [_decodeCashAddress()] or [_decodeLegacyAddress()]
   static _encode(String prefix, String type, Uint8List hash) {
     final prefixData = _prefixToUint5List(prefix) + Uint8List(1);
-    final versionByte = _getHashSizeBits(hash);
-    final payloadData = _convertBits(Uint8List.fromList([versionByte] + hash), 8, 5);
+    final versionByte = _getTypeBits(type) + _getHashSizeBits(hash);
+    final payloadData =
+        _convertBits(Uint8List.fromList([versionByte] + hash), 8, 5);
     final checksumData = prefixData + payloadData + Uint8List(8);
     final payload = payloadData + _checksumToUint5Array(_polymod(checksumData));
     return "$prefix:" + _base32Encode(payload);
@@ -183,14 +273,16 @@ class Address {
 
   /// Helper method for sending generic requests to Bitbox API. Accepts [String] or [List] of Strings and optionally
   /// converts the List returned by Bitbox into [Map], which uses cashAddress as a key
-  static Future<dynamic> _sendRequest(String path, dynamic addresses, [bool returnAsMap = false]) async {
+  static Future<dynamic> _sendRequest(String path, dynamic addresses,
+      [bool returnAsMap = false]) async {
     assert(addresses is String || addresses is List<String>);
 
     if (addresses is String) {
       return await RestApi.sendGetRequest("address/$path", addresses) as Map;
     } else if (addresses is List<String>) {
-      return await RestApi.sendPostRequest("address/$path", "addresses", addresses,
-        returnKey: returnAsMap ? "cashAddress" : null);
+      return await RestApi.sendPostRequest(
+          "address/$path", "addresses", addresses,
+          returnKey: returnAsMap ? "cashAddress" : null);
     } else {
       throw TypeError();
     }
@@ -249,11 +341,37 @@ class Address {
       case 7:
         return 512;
     }
+
+    return -1;
+  }
+
+  static String _getType(versionByte) {
+    switch (versionByte & 120) {
+      case 0:
+        return 'P2PKH';
+      case 8:
+        return 'P2SH';
+      default:
+        throw FormatException(
+            'Invalid address type in version byte: ' + versionByte + '.');
+    }
+  }
+
+  static int _getTypeBits(type) {
+    switch (type) {
+      case 'P2PKH':
+        return 0;
+      case 'P2SH':
+        return 8;
+      default:
+        throw new FormatException('Invalid type: ' + type + '.');
+    }
   }
 
   /// Decodes the given address into:
-  /// * (for cashAddr): constituting prefix (e.g. _bitcoincash_)
   /// * (for legacy): version
+  /// * (for cashAddr): constituting prefix (e.g. _bitcoincash_)
+  ///* (for slpAddr): constituting prefix (e.g. _simpleledger_)
   /// * hash
   /// * format
   static Map<String, dynamic> _decode(String address) {
@@ -265,6 +383,10 @@ class Address {
       return _decodeCashAddress(address);
     } catch (e) {}
 
+    try {
+      return _decodeSlpAddress(address);
+    } catch (e) {}
+
     throw FormatException("Invalid address format : $address");
   }
 
@@ -272,11 +394,35 @@ class Address {
   static Map<String, dynamic> _decodeLegacyAddress(String address) {
     Uint8List buffer = bs58check.decode(address);
 
-    return <String, dynamic>{
-      "version": buffer.first,
-      "hash": buffer.sublist(1),
-      "format" : formatLegacy,
+    var decoded = {
+      'prefix': "",
+      'type': "",
+      'hash': buffer.sublist(1),
+      'format': formatLegacy
     };
+
+    switch (buffer.first) {
+      case Network.bchPublic:
+        decoded['prefix'] = "bitcoincash";
+        decoded['type'] = "P2PKH";
+        break;
+
+      case Network.bchPublicscriptHash:
+        decoded['prefix'] = "bitcoincash";
+        decoded['type'] = "P2SH";
+        break;
+
+      case Network.bchTestnetPublic:
+        decoded['prefix'] = "bchtest";
+        decoded['type'] = "P2PKH";
+        break;
+
+      case Network.bchTestnetscriptHash:
+        decoded['prefix'] = "bchtest";
+        decoded['type'] = "P2SH";
+        break;
+    }
+    return decoded;
   }
 
   /// Decodes the given address into its constituting prefix, type and hash
@@ -317,7 +463,9 @@ class Address {
         continue;
       }
 
-      final payloadData = _fromUint5Array(payload.sublist(0, payload.length - 8));
+      final payloadData =
+          _fromUint5Array(payload.sublist(0, payload.length - 8));
+      var versionByte = payloadData[0];
       final hash = payloadData.sublist(1);
 
       if (_getHashSize(payloadData[0]) != hash.length * 8) {
@@ -325,12 +473,78 @@ class Address {
         continue;
       }
 
+      var type = _getType(versionByte);
+
       // If the loop got all the way here, it means validations went through and the address was decoded.
       // Return the decoded data
       return <String, dynamic>{
-        "prefix"  : prefixes[i],
-        "hash"    : hash,
-        "format"  : formatCashAddr
+        "prefix": prefixes[i],
+        "type": type,
+        "hash": hash,
+        "format": formatCashAddr
+      };
+    }
+
+    // if the loop went through all possible formats and didn't return data from the function, it means there were
+    // validation issues. Throw a format exception
+    throw FormatException(exception);
+  }
+
+  static Map<String, dynamic> _decodeSlpAddress(String address) {
+    if (!_hasSingleCase(address)) {
+      throw FormatException("Address has both lower and upper case: $address");
+    }
+
+    // split the address with : separator to find out it if contains prefix
+    final pieces = address.toLowerCase().split(":");
+
+    // placeholder for different prefixes to be tested later
+    List<String> prefixes;
+
+    // check if the address contained : separator by looking at number of splitted pieces
+    if (pieces.length == 2) {
+      // if it contained the separator, use the first piece as a single prefix
+      prefixes = <String>[pieces.first];
+      address = pieces.last;
+    } else if (pieces.length == 1) {
+      // if it came without separator, try all three possible formats
+      prefixes = <String>["simpleledger", "slptest", "slpreg"];
+    } else {
+      // if it came with more than one separator, throw a format exception
+      throw FormatException("Invalid Address Format: $address");
+    }
+
+    String exception;
+
+    // try to decode the address with either one or all three possible prefixes
+    for (int i = 0; i < prefixes.length; i++) {
+      final payload = _base32Decode(address);
+
+      if (!_validChecksum(prefixes[i], payload)) {
+        exception = "Invalid checksum: $address";
+        continue;
+      }
+
+      final payloadData =
+          _fromUint5Array(payload.sublist(0, payload.length - 8));
+
+      var versionByte = payloadData[0];
+      final hash = payloadData.sublist(1);
+
+      if (_getHashSize(payloadData[0]) != hash.length * 8) {
+        exception = "Invalid hash size: $address";
+        continue;
+      }
+
+      var type = _getType(versionByte);
+
+      // If the loop got all the way here, it means validations went through and the address was decoded.
+      // Return the decoded data
+      return <String, dynamic>{
+        "prefix": prefixes[i],
+        "type": type,
+        "hash": hash,
+        "format": formatSlp
       };
     }
 
@@ -358,8 +572,11 @@ class Address {
 
   /// Converts a list of integers made up of 'from' bits into an  array of integers made up of 'to' bits.
   /// The output array is zero-padded if necessary, unless strict mode is true.
-  static Uint8List _convertBits(List data, int from, int to, [bool strictMode = false]) {
-    final length = strictMode ? (data.length * from / to).floor() : (data.length * from / to).ceil();
+  static Uint8List _convertBits(List data, int from, int to,
+      [bool strictMode = false]) {
+    final length = strictMode
+        ? (data.length * from / to).floor()
+        : (data.length * from / to).ceil();
     int mask = (1 << to) - 1;
     var result = Uint8List(length);
     int index = 0;
@@ -383,7 +600,8 @@ class Address {
       }
     } else {
       if (bits < from && ((accumulator << (to - bits)) & mask).toInt() != 0) {
-        throw FormatException("Input cannot be converted to $to bits without padding, but strict mode was used.");
+        throw FormatException(
+            "Input cannot be converted to $to bits without padding, but strict mode was used.");
       }
     }
     return result;
@@ -392,13 +610,20 @@ class Address {
   /// Computes a checksum from the given input data as specified for the CashAddr format:
   // https://github.com/Bitcoin-UAHF/spec/blob/master/cashaddr.md.
   static int _polymod(List data) {
-    const GENERATOR = [0x98f2bc8e61, 0x79b76d99e2, 0xf33e5fb3c4, 0xae2eabe2a8, 0x1e4f43e470];
+    const GENERATOR = [
+      0x98f2bc8e61,
+      0x79b76d99e2,
+      0xf33e5fb3c4,
+      0xae2eabe2a8,
+      0x1e4f43e470
+    ];
 
     int checksum = 1;
 
     for (int i = 0; i < data.length; ++i) {
       final value = data[i];
       final topBits = checksum >> 35;
+
       checksum = ((checksum & 0x07ffffffff) << 5) ^ value;
 
       for (int j = 0; j < GENERATOR.length; ++j) {
@@ -415,7 +640,8 @@ class Address {
     final data = Uint8List(string.length);
     for (int i = 0; i < string.length; i++) {
       final value = string[i];
-      if (!_CHARSET_INVERSE_INDEX.containsKey(value)) throw FormatException("Invalid character '$value'");
+      if (!_CHARSET_INVERSE_INDEX.containsKey(value))
+        throw FormatException("Invalid character '$value'");
       data[i] = _CHARSET_INVERSE_INDEX[string[i]];
     }
 
@@ -453,16 +679,17 @@ class Utxo {
   final int height;
   final int confirmations;
 
-  Utxo(this.txid, this.vout, this.amount, this.satoshis, this.height, this.confirmations);
+  Utxo(this.txid, this.vout, this.amount, this.satoshis, this.height,
+      this.confirmations);
 
   /// Create [Utxo] instance from utxo [Map]
-  Utxo.fromMap(Map<String, dynamic> utxoMap) :
-    this.txid = utxoMap['txid'],
-    this.vout = utxoMap['vout'],
-    this.amount = utxoMap['amount'],
-    this.satoshis = utxoMap['satoshis'],
-    this.height = utxoMap.containsKey('height') ? utxoMap['height'] : null,
-    this.confirmations = utxoMap['confirmations'];
+  Utxo.fromMap(Map<String, dynamic> utxoMap)
+      : this.txid = utxoMap['txid'],
+        this.vout = utxoMap['vout'],
+        this.amount = utxoMap['amount'],
+        this.satoshis = utxoMap['satoshis'],
+        this.height = utxoMap.containsKey('height') ? utxoMap['height'] : null,
+        this.confirmations = utxoMap['confirmations'];
 
   /// Converts List of utxo maps into a list of [Utxo] objects
   static List<Utxo> convertMapListToUtxos(List utxoMapList) {
@@ -476,11 +703,11 @@ class Utxo {
 
   @override
   String toString() => jsonEncode({
-    "txid": txid,
-    "vout": vout,
-    "amount": amount,
-    "satoshis": satoshis,
-    "height": height,
-    "confirmations" : confirmations
-  });
+        "txid": txid,
+        "vout": vout,
+        "amount": amount,
+        "satoshis": satoshis,
+        "height": height,
+        "confirmations": confirmations
+      });
 }
